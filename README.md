@@ -51,5 +51,6 @@ La API usa el puerto `4000` y Vite usa normalmente el puerto `5173`.
 - Ticket imprimible de venta.
 - Resumen de caja separado entre efectivo y pagos digitales.
 - Inventario con ajustes y movimientos.
-
-No guardes credenciales, archivos `.env` ni datos de prueba sensibles en Git.
+- Reportes administrativos de ventas, compras, caja, inventario y auditoría.
+- Protección contra fuerza bruta, bloqueo temporal y rate limiting del login.
+- Invalidación de tokens al cerrar sesión o desactivar usuarios.

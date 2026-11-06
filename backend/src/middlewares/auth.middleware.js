@@ -1,7 +1,8 @@
 
 const jwt = require("jsonwebtoken");
+const pool = require("../config/database");
 
-function verificarToken(req, res, next) {
+async function verificarToken(req, res, next) {
     try {
         const authorization = req.headers.authorization;
 
@@ -18,6 +19,14 @@ function verificarToken(req, res, next) {
             process.env.JWT_SECRET
         );
 
+        const usuario = await pool.query(
+            "SELECT token_version, estado FROM usuarios WHERE id = $1",
+            [decoded.id]
+        );
+        if (!usuario.rows.length || !usuario.rows[0].estado ||
+            Number(usuario.rows[0].token_version) !== Number(decoded.token_version || 0)) {
+            return res.status(401).json({ mensaje: "La sesión ya no es válida." });
+        }
         req.usuario = decoded;
 
         next();

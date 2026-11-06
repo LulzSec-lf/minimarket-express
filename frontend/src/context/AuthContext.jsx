@@ -111,7 +111,12 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            if (token) await api.post("/auth/logout");
+        } catch (error) {
+            console.error("No se pudo invalidar la sesión en el servidor:", error);
+        }
         removeStoredValue("token");
         removeStoredValue("user");
         setToken(null);

@@ -1,15 +1,16 @@
 import { Component, useEffect, useState } from "react";
 import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 import {
-    AlertTriangle, Archive, Boxes, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CupSoda,
+    AlertTriangle, Archive, BarChart3, Boxes, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CupSoda,
     Banknote, ClipboardList, Cookie, FileText, FolderTree, HeartPulse, LayoutDashboard, LogOut, Menu, Milk, Package,
-    Pencil, Plus, Printer, QrCode, Receipt, Search, ShoppingBasket, ShoppingCart, Smartphone, SprayCan, Truck, UserRound, Users, Wheat, X
+    Eye, Pencil, Plus, Printer, QrCode, Receipt, Search, ShoppingBasket, ShoppingCart, Smartphone, SprayCan, Truck, UserRound, Users, Wheat, X
 } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import api from "./services/api";
 import { getStoredValue, setStoredValue } from "./services/storage";
 import "./App.css";
 import Login from "./pages/Login";
+import Reports from "./pages/Reports";
 
 const menu = [
     { key: "dashboard", label: "Panel principal", icon: LayoutDashboard, group: "INICIO" },
@@ -20,11 +21,12 @@ const menu = [
     { key: "categorias", label: "Categorías", icon: FolderTree, group: "CATÁLOGO" },
     { key: "clientes", label: "Clientes", icon: Users, group: "CONTACTOS" },
     { key: "proveedores", label: "Proveedores", icon: Truck, group: "CONTACTOS" },
-    { key: "usuarios", label: "Usuarios y roles", icon: UserRound, group: "ADMINISTRACIÓN" }
+    { key: "usuarios", label: "Usuarios y roles", icon: UserRound, group: "ADMINISTRACIÓN" },
+    { key: "reportes", label: "Reportes y auditoría", icon: BarChart3, group: "ADMINISTRACIÓN" }
 ];
 
 const allowed = (role, key) => {
-    if (key === "usuarios") return role === "ADMIN";
+    if (key === "usuarios" || key === "reportes") return role === "ADMIN";
     if (role === "CAJERO") return ["dashboard", "ventas", "productos", "clientes"].includes(key);
     if (role === "ALMACENISTA") return ["dashboard", "compras", "inventario", "productos", "categorias", "proveedores"].includes(key);
     return true;
@@ -131,7 +133,7 @@ function Dashboard() {
             </aside>
             <main className="scrollbar-none h-screen h-[100svh] min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-[#f5f7fa] [-webkit-overflow-scrolling:touch]">
                 <header className="border-b border-slate-200 bg-white px-5 py-5 lg:px-10"><p className="text-xs font-semibold uppercase tracking-wider text-[#18865b]">{current.group}</p><h1 className="mt-1 text-xl font-bold">{current.label}</h1></header>
-                <section className="p-4 sm:p-5 lg:p-8 xl:p-10">{active === "dashboard" && <Home onOpen={go} />}{active === "ventas" && <PointOfSale />}{active === "productos" && <Products />}{active === "categorias" && <Categories />}{active === "inventario" && <Inventory />}{active === "usuarios" && <UsersModule />}{active === "compras" && <Purchases />}{active === "clientes" && <Clients />}{active === "proveedores" && <Suppliers />}</section>
+                <section className="p-4 sm:p-5 lg:p-8 xl:p-10">{active === "dashboard" && <Home onOpen={go} />}{active === "ventas" && <PointOfSale />}{active === "productos" && <Products />}{active === "categorias" && <Categories />}{active === "inventario" && <Inventory />}{active === "usuarios" && <UsersModule />}{active === "reportes" && <Reports />}{active === "compras" && <Purchases />}{active === "clientes" && <Clients />}{active === "proveedores" && <Suppliers />}</section>
             </main>
         </div>
     );
@@ -605,6 +607,60 @@ function Inventory() {
     </Resource>;
 }
 
+function SalesHistory() {
+    const [sales, setSales] = useState([]);
+    const [selectedSale, setSelectedSale] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    const loadSales = () => {
+        setLoading(true);
+        api.get("/ventas")
+            .then(({ data }) => setSales(data))
+            .catch((e) => setError(e.response?.data?.mensaje || "No se pudo cargar el historial de ventas"))
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => {
+        loadSales();
+        const handleSalesChanged = () => loadSales();
+        window.addEventListener("sales:changed", handleSalesChanged);
+        return () => window.removeEventListener("sales:changed", handleSalesChanged);
+    }, []);
+
+    const viewDetails = async (saleId) => {
+        setDetailLoading(true);
+        setError("");
+        try {
+            const { data } = await api.get(`/ventas/${saleId}`);
+            setSelectedSale(data);
+        } catch (e) {
+            setError(e.response?.data?.mensaje || "No se pudo cargar el detalle de la venta");
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    return <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div><h3 className="text-lg font-bold text-[#14243a]">Historial de ventas</h3><p className="text-sm text-slate-500">Consulta los productos y datos de cada operación.</p></div>
+            <button type="button" onClick={loadSales} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Actualizar</button>
+        </div>
+        {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px] text-left text-sm">
+                <thead className="border-b border-slate-100 bg-[#f8fafc] text-[11px] uppercase tracking-wider text-slate-500"><tr>{["Venta", "Fecha", "Pago", "Total", "Estado", "Acción"].map((header) => <th key={header} className="px-3 py-3 font-bold">{header}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                    {loading ? <tr><td colSpan="6" className="px-3 py-10 text-center text-slate-400">Cargando ventas...</td></tr> : sales.length ? sales.map((sale) => <tr key={sale.id} className="hover:bg-emerald-50/30"><td className="px-3 py-3 font-semibold text-[#14243a]">#{sale.id}</td><td className="px-3 py-3 text-slate-600">{new Date(sale.fecha).toLocaleString("es-PE")}</td><td className="px-3 py-3">{sale.metodo_pago}</td><td className="px-3 py-3 font-semibold">S/ {Number(sale.total || 0).toFixed(2)}</td><td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sale.estado === "ANULADA" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>{sale.estado}</span></td><td className="px-3 py-3"><button type="button" onClick={() => viewDetails(sale.id)} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#18865b] hover:bg-emerald-50"><Eye size={15} /> Ver detalle</button></td></tr>) : <tr><td colSpan="6" className="px-3 py-10 text-center text-slate-400">No hay ventas registradas</td></tr>}
+                </tbody>
+            </table>
+        </div>
+        {selectedSale && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSale(null); }}><div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6"><div className="mb-5 flex items-start justify-between border-b border-slate-100 pb-4"><div><h3 className="text-xl font-bold text-[#14243a]">Venta #{selectedSale.id}</h3><p className="text-sm text-slate-500">Detalle de la operación</p></div><button type="button" onClick={() => setSelectedSale(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={19} /></button></div><div className="mb-5 grid gap-2 text-sm text-slate-600 sm:grid-cols-2"><p><strong>Fecha:</strong> {new Date(selectedSale.fecha).toLocaleString("es-PE")}</p><p><strong>Método de pago:</strong> <span className="font-semibold text-[#18865b]">{selectedSale.metodo_pago}</span></p><p><strong>Cajero:</strong> {selectedSale.usuario_nombre || `Usuario #${selectedSale.usuario_id || "no indicado"}`}</p><p><strong>Estado:</strong> {selectedSale.estado}</p></div><div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200"><table className="w-full text-left text-sm"><thead className="bg-[#f8fafc] text-slate-600"><tr><th className="p-3">Producto</th><th className="p-3 text-center">Cant.</th><th className="p-3 text-right">Precio</th><th className="p-3 text-right">Subtotal</th></tr></thead><tbody className="divide-y divide-slate-100">{(selectedSale.detalles || []).map((item) => <tr key={item.detalle_id}><td className="p-3 font-medium text-slate-800">{item.producto}</td><td className="p-3 text-center text-slate-600">{item.cantidad}</td><td className="p-3 text-right text-slate-600">S/ {Number(item.precio_unitario || 0).toFixed(2)}</td><td className="p-3 text-right font-medium text-slate-800">S/ {Number(item.subtotal || 0).toFixed(2)}</td></tr>)}</tbody></table></div><div className="mt-5 space-y-1 border-t border-slate-100 pt-4 text-right text-sm"><p>Subtotal: <strong>S/ {Number(selectedSale.subtotal || 0).toFixed(2)}</strong></p><p>IGV: <strong>S/ {Number(selectedSale.impuesto || 0).toFixed(2)}</strong></p><p className="text-lg font-bold text-[#18865b]">Total: S/ {Number(selectedSale.total || 0).toFixed(2)}</p></div><button type="button" onClick={() => setSelectedSale(null)} className="mt-5 w-full rounded-xl bg-slate-800 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">Cerrar</button></div></div>}
+        {detailLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/20 p-4"><div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-xl">Cargando detalle...</div></div>}
+    </section>;
+}
+
 function PointOfSale() {
     const [products, setProducts] = useState([]);
     const [clients, setClients] = useState([]);
@@ -694,6 +750,7 @@ function PointOfSale() {
             await api.post(`/ventas/${saleId}/confirmar`);
             setTicket({ id: saleId, items: cart, total, payment, received: payment === "EFECTIVO" ? Number(received) : total, change: payment === "EFECTIVO" ? Math.max(0, Number(received) - total) : 0, date: new Date() });
             setCart([]); setClientId(""); setMessage(`Venta #${saleId} confirmada correctamente`);
+            window.dispatchEvent(new Event("sales:changed"));
             setReceived(""); setPaymentReference(""); setShowQr(false);
             const refreshed = await api.get("/productos");
             setProducts(refreshed.data.filter((product) => product.estado));
@@ -730,6 +787,7 @@ function PointOfSale() {
             </div>
         </div>
         {ticket && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setTicket(null); }}><div className="ticket-print w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl"><div className="text-center"><Receipt className="mx-auto text-[#18865b]" size={28} /><h3 className="font-bold">Minimarket Express</h3><p className="text-xs text-slate-500">Venta #{ticket.id} · {ticket.date.toLocaleString("es-PE")}</p></div><div className="my-4 space-y-2 border-y border-dashed border-slate-300 py-3 text-sm">{ticket.items.map((item) => <div key={item.id} className="flex justify-between gap-3"><span>{item.cantidad} x {item.nombre}</span><span>S/ {(Number(item.precio_venta) * item.cantidad).toFixed(2)}</span></div>)}</div><div className="space-y-1 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>S/ {(ticket.total / 1.18).toFixed(2)}</span></div><div className="flex justify-between"><span>IGV (18%)</span><span>S/ {(ticket.total - ticket.total / 1.18).toFixed(2)}</span></div><div className="flex justify-between text-lg font-bold"><span>Total</span><span>S/ {ticket.total.toFixed(2)}</span></div><div className="flex justify-between"><span>Pago</span><span>{ticket.payment}</span></div><div className="flex justify-between"><span>Recibido</span><span>S/ {ticket.received.toFixed(2)}</span></div><div className="flex justify-between"><span>Vuelto</span><span>S/ {ticket.change.toFixed(2)}</span></div></div><div className="mt-5 flex gap-2"><button onClick={() => window.print()} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#18865b] py-2.5 text-sm font-semibold text-white"><Printer size={16} /> Imprimir</button><button onClick={() => setTicket(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Cerrar</button></div></div></div>}
+        <SalesHistory />
     </Resource>;
 }
 

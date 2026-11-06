@@ -5,9 +5,20 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const pool = require("../config/database");
 const { verificarToken } = require("../middlewares/auth.middleware");
+const { rateLimit } = require("express-rate-limit");
+const { registrarAuditoria } = require("../utils/audit");
+const { failedLoginState } = require("../utils/security");
+
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { mensaje: "Demasiados intentos. Espera unos minutos e inténtalo nuevamente." }
+});
 
 // POST: Iniciar sesión
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
     try {
         const { correo, password } = req.body || {};
 
@@ -26,7 +37,10 @@ router.post("/login", async (req, res) => {
                 u.correo,
                 u.password_hash,
                 u.rol_id,
-                r.nombre AS rol
+                r.nombre AS rol,
+                u.intentos_fallidos,
+                u.bloqueado_hasta,
+                u.token_version
              FROM usuarios u
              INNER JOIN roles r ON r.id = u.rol_id
              WHERE LOWER(u.correo) = LOWER($1)
@@ -42,6 +56,11 @@ router.post("/login", async (req, res) => {
         }
 
         const usuario = resultado.rows[0];
+        if (usuario.bloqueado_hasta && new Date(usuario.bloqueado_hasta) > new Date()) {
+            return res.status(423).json({
+                mensaje: "La cuenta está temporalmente bloqueada. Intenta nuevamente más tarde."
+            });
+        }
 
         // Comparar contraseña con el hash almacenado
         const passwordValida = await bcrypt.compare(
@@ -50,6 +69,19 @@ router.post("/login", async (req, res) => {
         );
 
         if (!passwordValida) {
+            const { attempts, blockedUntil: bloqueadoHasta } = failedLoginState(usuario.intentos_fallidos);
+            await pool.query(
+                `UPDATE usuarios SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`,
+                [attempts, bloqueadoHasta, usuario.id]
+            );
+            await registrarAuditoria({
+                usuarioId: usuario.id,
+                accion: "LOGIN_FALLIDO",
+                entidad: "usuarios",
+                entidadId: usuario.id,
+                detalles: { bloqueada: Boolean(bloqueadoHasta) },
+                ip: req.ip
+            });
             return res.status(401).json({
                 mensaje: "Correo o contraseña incorrectos"
             });
@@ -65,7 +97,8 @@ router.post("/login", async (req, res) => {
             {
                 id: usuario.id,
                 rol_id: usuario.rol_id,
-                rol: usuario.rol
+                rol: usuario.rol,
+                token_version: usuario.token_version
             },
             process.env.JWT_SECRET,
             {
@@ -76,10 +109,19 @@ router.post("/login", async (req, res) => {
         // Actualizar último acceso
         await pool.query(
             `UPDATE usuarios
-             SET ultimo_acceso = CURRENT_TIMESTAMP
+             SET ultimo_acceso = CURRENT_TIMESTAMP,
+                 intentos_fallidos = 0,
+                 bloqueado_hasta = NULL
              WHERE id = $1`,
             [usuario.id]
         );
+        await registrarAuditoria({
+            usuarioId: usuario.id,
+            accion: "LOGIN_CORRECTO",
+            entidad: "usuarios",
+            entidadId: usuario.id,
+            ip: req.ip
+        });
 
         // Responder sin revelar el hash
         res.json({
@@ -90,7 +132,25 @@ router.post("/login", async (req, res) => {
                 nombre: usuario.nombre,
                 correo: usuario.correo,
                 rol_id: usuario.rol_id,
-                rol: usuario.rol
+                rol: usuario.rol,
+                token_version: usuario.token_version
+            }
+        });
+
+        router.post("/logout", verificarToken, async (req, res) => {
+            try {
+                await pool.query("UPDATE usuarios SET token_version = token_version + 1 WHERE id = $1", [req.usuario.id]);
+                await registrarAuditoria({
+                    usuarioId: req.usuario.id,
+                    accion: "LOGOUT",
+                    entidad: "usuarios",
+                    entidadId: req.usuario.id,
+                    ip: req.ip
+                });
+                res.json({ mensaje: "Sesión cerrada correctamente" });
+            } catch (error) {
+                console.error("Error al cerrar sesión:", error);
+                res.status(500).json({ mensaje: "No se pudo cerrar la sesión" });
             }
         });
 

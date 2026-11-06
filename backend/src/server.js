@@ -1,6 +1,7 @@
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 require("dotenv").config();
 
 const pool = require("./config/database");
@@ -13,7 +14,9 @@ const clientesRoutes = require("./routes/clientes.routes");
 const authRoutes = require("./routes/auth.routes");
 const usuariosRoutes = require("./routes/usuarios.routes");
 const categoriasRoutes = require("./routes/categorias.routes");
+const reportesRoutes = require("./routes/reportes.routes");
 const { verificarToken, verificarRol } = require("./middlewares/auth.middleware");
+const { registrarAuditoria } = require("./utils/audit");
 
 
 const app = express();
@@ -31,6 +34,20 @@ app.use(cors({
   }
 }));
 app.disable("x-powered-by");
+app.use(helmet());
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    if (!req.usuario || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return;
+    registrarAuditoria({
+      usuarioId: req.usuario.id,
+      accion: `${req.method} ${req.baseUrl || ""}${req.path}`,
+      entidad: req.path.split("/")[1],
+      detalles: { status: res.statusCode },
+      ip: req.ip
+    }).catch((error) => console.error("Error al registrar auditoría:", error));
+  });
+  next();
+});
 
 app.use("/api/productos", productosRoutes);
 app.use("/api/auth", authRoutes);
@@ -41,6 +58,7 @@ app.use("/api/proveedores", verificarToken, verificarRol("ADMIN", "ALMACENISTA")
 app.use("/api/compras", verificarToken, verificarRol("ADMIN", "ALMACENISTA"), comprasRoutes);
 app.use("/api/ventas", verificarToken, verificarRol("ADMIN", "CAJERO"), ventasRoutes);
 app.use("/api/clientes", verificarToken, verificarRol("ADMIN", "CAJERO"), clientesRoutes);
+app.use("/api/reportes", verificarToken, verificarRol("ADMIN"), reportesRoutes);
 
 
 app.get("/", (req, res) => {
@@ -76,6 +94,19 @@ const PORT = process.env.PORT || 4000;
 async function startServer() {
   try {
     await pool.query("ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagen_url TEXT");
+    await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS intentos_fallidos INTEGER NOT NULL DEFAULT 0");
+    await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado_hasta TIMESTAMPTZ");
+    await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0");
+    await pool.query(`CREATE TABLE IF NOT EXISTS auditoria (
+      id BIGSERIAL PRIMARY KEY,
+      usuario_id INTEGER REFERENCES usuarios(id),
+      accion VARCHAR(80) NOT NULL,
+      entidad VARCHAR(80),
+      entidad_id INTEGER,
+      detalles JSONB,
+      ip VARCHAR(64),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
     await pool.query(
       `UPDATE productos
        SET imagen_url = $1

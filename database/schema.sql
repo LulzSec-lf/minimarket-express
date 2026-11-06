@@ -19,7 +19,21 @@ CREATE TABLE IF NOT EXISTS usuarios (
   password_hash TEXT NOT NULL,
   rol_id INTEGER NOT NULL REFERENCES roles(id),
   estado BOOLEAN NOT NULL DEFAULT TRUE,
+  intentos_fallidos INTEGER NOT NULL DEFAULT 0 CHECK (intentos_fallidos >= 0),
+  bloqueado_hasta TIMESTAMPTZ,
+  token_version INTEGER NOT NULL DEFAULT 0 CHECK (token_version >= 0),
   ultimo_acceso TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auditoria (
+  id BIGSERIAL PRIMARY KEY,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  accion VARCHAR(80) NOT NULL,
+  entidad VARCHAR(80),
+  entidad_id INTEGER,
+  detalles JSONB,
+  ip VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -135,3 +149,5 @@ ON CONFLICT (nombre) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_productos_nombre ON productos (nombre);
 CREATE INDEX IF NOT EXISTS idx_movimientos_producto ON movimientos (producto_id);
+CREATE INDEX IF NOT EXISTS idx_auditoria_created_at ON auditoria (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria (usuario_id);

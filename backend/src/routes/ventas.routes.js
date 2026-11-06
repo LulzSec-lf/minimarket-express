@@ -237,6 +237,7 @@ router.get("/", async (req, res) => {
                 v.observaciones,
                 v.metodo_pago,
                 v.usuario_id,
+                u.nombre AS usuario_nombre,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -253,7 +254,8 @@ router.get("/", async (req, res) => {
             FROM ventas v
             LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
             LEFT JOIN productos p ON p.id = dv.producto_id
-            GROUP BY v.id
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            GROUP BY v.id, u.nombre
             ORDER BY v.id DESC
         `);
 
@@ -291,7 +293,9 @@ router.get("/:id", async (req, res) => {
                 v.total,
                 v.estado,
                 v.observaciones,
+                v.metodo_pago,
                 v.usuario_id,
+                u.nombre AS usuario_nombre,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -308,8 +312,9 @@ router.get("/:id", async (req, res) => {
             FROM ventas v
             LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
             LEFT JOIN productos p ON p.id = dv.producto_id
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
             WHERE v.id = $1
-            GROUP BY v.id
+            GROUP BY v.id, u.nombre
             `,
             [id]
         );
