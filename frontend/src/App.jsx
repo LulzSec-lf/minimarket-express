@@ -143,6 +143,7 @@ function Home({ onOpen }) {
     const inventoryTarget = allowed(user?.rol, "inventario") ? "inventario" : "productos";
     const [stats, setStats] = useState({ productos: 0, categorias: 0, ventas: 0, compras: 0 });
     const [sales, setSales] = useState([]);
+    const [allSales, setAllSales] = useState([]);
     const [activity, setActivity] = useState([]);
     const [error, setError] = useState("");
     useEffect(() => {
@@ -158,6 +159,7 @@ function Home({ onOpen }) {
         const salesData = v?.data || [];
         const purchasesData = co?.data || [];
         setStats({ productos: products.filter((item) => item.estado !== false).length, categorias: categories.filter((item) => item.estado !== false).length, ventas: salesData.length, compras: purchasesData.length });
+        setAllSales(salesData);
         setSales(salesData.slice(0, 5));
         const days = Array.from({ length: 7 }, (_, index) => {
             const date = new Date();
@@ -175,6 +177,15 @@ function Home({ onOpen }) {
     }, [user?.rol]);
     const maxActivity = Math.max(...activity.map((day) => day.total), 1);
     const paymentLabels = { EFECTIVO: "Efectivo", YAPE: "Yape", PLIN: "Plin" };
+    const cashSummary = allSales.reduce((summary, sale) => {
+        if (sale.estado === "ANULADA") return summary;
+        const total = Number(sale.total) || 0;
+        if (sale.metodo_pago === "EFECTIVO") summary.efectivo += total;
+        if (sale.metodo_pago === "YAPE") summary.yape += total;
+        if (sale.metodo_pago === "PLIN") summary.plin += total;
+        return summary;
+    }, { efectivo: 0, yape: 0, plin: 0 });
+    const digitalTotal = cashSummary.yape + cashSummary.plin;
     const cards = [
         ["ventas", "Ventas registradas", stats.ventas, CircleDollarSign, "text-[#18865b]", "bg-emerald-50"],
         ["productos", "Productos activos", stats.productos, Package, "text-blue-600", "bg-blue-50"],
@@ -183,6 +194,7 @@ function Home({ onOpen }) {
     ].filter(([key]) => allowed(user?.rol, key));
     return <div className="mx-auto max-w-[1500px]">{error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}<div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="mb-2 text-sm font-semibold text-[#18865b]">Resumen general</p><h2 className="text-3xl font-bold tracking-tight text-[#14243a]">Buenos días, revisemos tu negocio</h2><p className="mt-2 text-sm text-slate-500">Aquí tienes una visión rápida de la operación.</p></div><button onClick={() => onOpen(canSell ? "ventas" : inventoryTarget)} className="flex items-center justify-center gap-2 rounded-xl bg-[#18865b] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-800/20 hover:bg-[#126b47]">{canSell ? <ShoppingCart size={17} /> : <Boxes size={17} />} {canSell ? "Nueva venta" : "Ver inventario"}</button></div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(([key, label, value, Icon, color, bg]) => <button key={key} onClick={() => onOpen(key)} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-start justify-between"><div className={`rounded-xl p-2.5 ${bg} ${color}`}><Icon size={21} /></div><span className="text-xs font-semibold text-slate-400">Actual</span></div><p className="mt-5 text-sm text-slate-500">{label}</p><p className="mt-1 text-3xl font-bold text-[#14243a]">{value}</p></button>)}</div>
+        {canSell && <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><div><h3 className="font-bold">Resumen de caja</h3><p className="mt-1 text-xs text-slate-500">Ventas registradas en esta sesión de consulta, excluyendo anuladas.</p></div><span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-[#18865b]">Digital: S/ {digitalTotal.toFixed(2)}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs font-semibold text-emerald-700">Efectivo en cajón</p><p className="mt-1 text-xl font-bold text-emerald-900">S/ {cashSummary.efectivo.toFixed(2)}</p></div><div className="rounded-xl bg-violet-50 p-4"><p className="text-xs font-semibold text-violet-700">Yape</p><p className="mt-1 text-xl font-bold text-violet-900">S/ {cashSummary.yape.toFixed(2)}</p></div><div className="rounded-xl bg-blue-50 p-4"><p className="text-xs font-semibold text-blue-700">Plin</p><p className="mt-1 text-xl font-bold text-blue-900">S/ {cashSummary.plin.toFixed(2)}</p></div></div></div>}
         <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><h3 className="font-bold">Actividad de ventas</h3><p className="mt-1 text-xs text-slate-500">Ingresos diarios de los últimos 7 días</p></div><span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-[#18865b]">S/ {activity.reduce((sum, day) => sum + day.total, 0).toFixed(2)}</span></div>{activity.length ? <div className="mt-6 flex h-48 items-end gap-2 border-b border-slate-100 px-2">{activity.map((day) => <div key={day.date.toISOString()} className="group flex min-w-0 flex-1 flex-col items-center gap-2" title={`S/ ${day.total.toFixed(2)}`}><div className="w-full max-w-[34px] rounded-t-md bg-[#18865b]/80 transition group-hover:bg-[#18865b]" style={{ height: `${Math.max((day.total / maxActivity) * 100, day.total ? 8 : 2)}%` }} /><span className="text-[10px] uppercase text-slate-400">{day.label}</span></div>)}</div> : <div className="flex h-48 items-center justify-center text-sm text-slate-400">Cargando actividad...</div>}</div><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="font-bold">Últimas ventas</h3><button onClick={() => onOpen("ventas")} className="text-xs font-semibold text-[#18865b]">Ver todas</button></div><div className="mt-4 space-y-3">{sales.length ? sales.map((sale) => <div key={sale.id} className="flex items-center justify-between rounded-xl bg-[#f5f7fa] p-3"><div><p className="text-sm font-semibold">Venta #{sale.id}</p><p className="text-xs text-slate-500">{sale.numero_documento || "Sin documento"}</p><p className="mt-1 text-[11px] text-slate-500">{paymentLabels[sale.metodo_pago] || "Pago no indicado"}</p></div><div className="text-right"><p className="text-sm font-bold">S/ {Number(sale.total || 0).toFixed(2)}</p><p className="text-[11px] text-[#18865b]">{sale.estado}</p></div></div>) : <p className="py-8 text-center text-sm text-slate-400">No hay ventas registradas</p>}</div></div></div>
         <div className="mt-6 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><AlertTriangle size={20} className="shrink-0 text-amber-600" /><div><p className="text-sm font-semibold">Revisa tu inventario</p><p className="text-xs text-amber-700">Consulta existencias y productos que necesitan reposición.</p></div><button onClick={() => onOpen(inventoryTarget)} className="ml-auto whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs font-semibold text-amber-800 shadow-sm">{allowed(user?.rol, "inventario") ? "Ver inventario" : "Ver productos"}</button></div>
     </div>;
