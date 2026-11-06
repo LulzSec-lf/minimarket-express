@@ -54,3 +54,4 @@ La API usa el puerto `4000` y Vite usa normalmente el puerto `5173`.
 - Reportes administrativos de ventas, compras, caja, inventario y auditoría.
 - Protección contra fuerza bruta, bloqueo temporal y rate limiting del login.
 - Invalidación de tokens al cerrar sesión o desactivar usuarios.
+- Interfaz POS optimizada para tablets y pantallas táctiles con Tailwind CSS y `@tailwindcss/forms`.

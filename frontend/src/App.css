@@ -4,6 +4,20 @@ button:disabled { cursor: not-allowed; }
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+@media (pointer: coarse) {
+  button,
+  a,
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    touch-action: manipulation;
+  }
+
+  .pos-touch-zone button {
+    min-height: 48px;
+  }
+}
 .sidebar-scroll::-webkit-scrollbar { display: none; }
 .scrollbar-none {
   scrollbar-width: none;
